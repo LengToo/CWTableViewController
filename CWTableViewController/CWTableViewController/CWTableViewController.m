@@ -10,20 +10,24 @@
 #import "CWRefreshTableHeaderView.h"
 #import "SDImageCache.h"
 #import "SDWebImageDownloader.h"
+#import <NSString+MD5.h>
 
 #if DEBUG_CWTableViewController
-#define DEBUG_NUM_OF_ROWS       10
+#define DEBUG_NUM_OF_ROWS       100
 #endif
 
 static NSString *identifier = @"Cell Identifier";
 
 @interface CWTableViewController () <CWRefreshTableHeaderDelegate>
 
+@property (strong, atomic, readonly) NSMutableSet *finishLoadedImageURLs;
+
 @end
 
 @implementation CWTableViewController
 {
     BOOL isLoading;
+    NSMutableSet *_finishLoadedImageURLs;
 }
 
 #pragma mark - Life cycle
@@ -38,8 +42,15 @@ static NSString *identifier = @"Cell Identifier";
 
 - (void)cw_initializeVariables
 {
+    _showDebugInfo = NO;
+    _usingEstimatedRowHeight = NO;
+    
+    self.estimatedRowHeight = 44.0;
     self.allowLoadingMore = NO;
     self.loadingMoreCellHeight = 44.0;
+    self.allowLazyLoading = YES;
+    
+    _finishLoadedImageURLs = [NSMutableSet setWithCapacity:100];
 }
 
 - (void)cw_initializeTableView
@@ -49,6 +60,15 @@ static NSString *identifier = @"Cell Identifier";
     
     [self.tableView registerClass:[self classOfTableViewCell] forCellReuseIdentifier:identifier];
     self.refreshHeaderView.delegate = self;
+}
+
+- (void)setUsingEstimatedRowHeight:(BOOL)usingEstimatedRowHeight
+{
+    _usingEstimatedRowHeight = usingEstimatedRowHeight;
+    
+    if (_usingEstimatedRowHeight && [self.tableView respondsToSelector:@selector(setEstimatedRowHeight:)]) {
+        [self.tableView setEstimatedRowHeight:self.estimatedRowHeight];
+    }
 }
 
 
@@ -186,67 +206,90 @@ static NSString *identifier = @"Cell Identifier";
 
 #pragma mark - Lazy loading
 
-- (void)lazyLoadingImage:(NSURL *)imgURL atIndexPath:(NSIndexPath *)indexPath withCompletionBlock:(void (^)(UIImage *image, BOOL isPlaceholder))block
+- (void)lazyLoadingImage:(NSURL *)imgURL atIndexPath:(NSIndexPath *)indexPath
 {
-    UIImage *cachedImage = [[SDImageCache sharedImageCache] imageFromDiskCacheForKey:[imgURL absoluteString]];
-    
-    if ( !cachedImage )
-    {
-        if ( !self.tableView.dragging && !self.tableView.decelerating ) {
-            [self downloadImage:imgURL forIndexPath:indexPath];
-        }
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         
-        block(self.placeholder, YES);
-    } else {
-        block(cachedImage, NO);
-    }
+        UIImage *cachedImage = [[SDImageCache sharedImageCache] imageFromDiskCacheForKey:[[imgURL absoluteString] MD5Digest]];
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            
+            id cell = [self.tableView cellForRowAtIndexPath:indexPath];
+            
+            if ( !cachedImage )
+            {
+                if ( !self.tableView.dragging && !self.tableView.decelerating ) {
+                    [self downloadImage:imgURL forIndexPath:indexPath];
+                }
+                
+                if (cell) {
+                    self.cwLazyLoadingImageCompleteBlock(cell, self.placeholder, YES);
+                }
+            } else {
+                if (cell) {
+                    self.cwLazyLoadingImageCompleteBlock(cell, cachedImage, NO);
+                }
+            }
+        });
+    });
 }
 
 - (void)downloadImage:(NSURL *)imgURL forIndexPath:(NSIndexPath *)indexPath
 {
-    __weak id target = self;
+    __weak typeof(self) weakSelf = self;
     
-    [[SDWebImageDownloader sharedDownloader] downloadImageWithURL:imgURL
-    options:SDWebImageDownloaderUseNSURLCache
-    progress:^(NSUInteger receivedSize, long long expectedSize) {
-        // Do nothing
-    }
-    completed:^(UIImage *image, NSData *data, NSError *error, BOOL finished) {
-
-        // 保存图片
-        [[SDImageCache sharedImageCache] storeImage:image forKey:[imgURL absoluteString] toDisk:YES];
-
-        // 延迟在主线程更新 cell 的高度
-        [target performSelectorOnMainThread:@selector(reloadCellAtIndexPath:)
-                             withObject:indexPath waitUntilDone:NO];
-    }];
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        
+        // 每个图片链接只下载一次，失败后也重复尝试
+        NSString *key = [[imgURL absoluteString] MD5Digest];
+        if ([[self finishLoadedImageURLs] containsObject:key]) {
+            return;
+        }
+        
+        [[SDWebImageDownloader sharedDownloader] downloadImageWithURL:imgURL
+        options:SDWebImageDownloaderUseNSURLCache
+        progress:^(NSUInteger receivedSize, long long expectedSize) {
+            // Do nothing
+        }
+        completed:^(UIImage *image, NSData *data, NSError *error, BOOL finished) {
+            
+            if (!finished || error) {
+                return;
+            }
+            
+            // 保存图片
+            [[SDImageCache sharedImageCache] storeImage:image forKey:[[imgURL absoluteString] MD5Digest] toDisk:YES];
+            
+            // 在主线程更新 cell 的高度
+            dispatch_async(dispatch_get_main_queue(), ^{
+                typeof(weakSelf) strongSelf = weakSelf;
+                LazyLoadingImageCompleteBlockType block = [weakSelf cwLazyLoadingImageCompleteBlock];
+                
+                id cell = [[strongSelf tableView] cellForRowAtIndexPath:indexPath];
+                if (cell && block) {
+                    block(cell, image, NO);
+                }
+            });
+        }];
+    });
 }
 
-- (void)loadImageForOnScreenRows
+- (void)downloadImageForOnScreenRows
 {
     NSArray *visiableIndexPathes = [self.tableView indexPathsForVisibleRows];
     
     for (NSIndexPath *indexPath in visiableIndexPathes)
     {
-        NSURL *imgURL = [self imageURLAtIndexPath:indexPath];
-        [self downloadImage:imgURL forIndexPath:indexPath];
-    }
-}
-
-- (void)reloadCellAtIndexPath:(NSIndexPath *)indexPath
-{
-    /* 
-     * 如果 indexPath 当前可见，则立即刷新数据
-     */
-    
-    NSArray *indexPaths = [self.tableView indexPathsForVisibleRows];
-    
-    for (NSIndexPath *aIndexPath in indexPaths)
-    {
-        if (aIndexPath.row == indexPath.row)
-        {
-            [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
-            return;
+        @autoreleasepool {
+            @try {
+                NSURL *imgURL = [self imageURLAtIndexPath:indexPath];
+                [self downloadImage:imgURL forIndexPath:indexPath];
+            }
+            @catch (NSException *exception) {
+                if (self.showDebugInfo) {
+                    NSLog(@"%@", exception);
+                }
+            }
         }
     }
 }
@@ -268,8 +311,8 @@ static NSString *identifier = @"Cell Identifier";
 {
     [self.refreshHeaderView cwRefreshScrollViewDidEndDragging:scrollView];
     
-    if (!decelerate) {
-        [self loadImageForOnScreenRows];
+    if (self.allowLazyLoading && !decelerate) {
+        [self downloadImageForOnScreenRows];
     }
     
     // 触发加载更多事件
@@ -280,6 +323,9 @@ static NSString *identifier = @"Cell Identifier";
         
         if (OffsetY > scrollView.contentSize.height)
         {
+            if (![self canTriggerLoadingMore]) {
+                return;
+            }
             // 开始加载更多
             [self startLoadingMore];
         }
@@ -288,7 +334,9 @@ static NSString *identifier = @"Cell Identifier";
 
 - (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView
 {
-    [self loadImageForOnScreenRows];
+    if (self.allowLazyLoading) {
+        [self downloadImageForOnScreenRows];
+    }
 }
 
 #pragma mark - Pull refresh delegate
@@ -343,6 +391,8 @@ static NSString *identifier = @"Cell Identifier";
 
 - (NSURL *)imageURLAtIndexPath:(NSIndexPath *)indexPath
 {
+    [NSException raise:@"Invalidate Calling"
+                format:@"Subclass <%@> should overwrite this method!", NSStringFromClass([self class])];
     return nil;
 }
 
@@ -361,6 +411,11 @@ static NSString *identifier = @"Cell Identifier";
     
 }
 
+- (BOOL)canTriggerLoadingMore
+{
+    return YES;
+}
+
 - (void)onLoadingMore
 {
     
@@ -374,9 +429,10 @@ static NSString *identifier = @"Cell Identifier";
     if ( _tableView == nil ) {
         _tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
         _tableView.dataSource = self;
-        _tableView.delegate = self;
-        _tableView.backgroundColor = [UIColor clearColor];
-        _tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+        _tableView.delegate   = self;
+        _tableView.backgroundColor  = [UIColor clearColor];
+        _tableView.separatorStyle   = UITableViewCellSeparatorStyleNone;
+        _tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     }
     return _tableView;
 }

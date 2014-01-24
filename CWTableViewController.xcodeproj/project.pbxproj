@@ -28,6 +28,7 @@
 		08664508187EBEB1005988B0 /* pull3@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 08664502187EBEB1005988B0 /* pull3@2x.png */; };
 		08664509187EBEB1005988B0 /* pull4@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 08664503187EBEB1005988B0 /* pull4@2x.png */; };
 		0866450A187EBEB1005988B0 /* pull_refresh_logo@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 08664504187EBEB1005988B0 /* pull_refresh_logo@2x.png */; };
+		08CF0AB218924E4E00039172 /* Reveal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 08CF0AB118924E4E00039172 /* Reveal.framework */; };
 		DA272441BF794D4892D728E5 /* libPods.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4BCB9DF317E4423783001186 /* libPods.a */; };
 /* End PBXBuildFile section */
 
@@ -69,6 +70,7 @@
 		08664502187EBEB1005988B0 /* pull3@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "pull3@2x.png"; sourceTree = "<group>"; };
 		08664503187EBEB1005988B0 /* pull4@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "pull4@2x.png"; sourceTree = "<group>"; };
 		08664504187EBEB1005988B0 /* pull_refresh_logo@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "pull_refresh_logo@2x.png"; sourceTree = "<group>"; };
+		08CF0AB118924E4E00039172 /* Reveal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = Reveal.framework; sourceTree = "<group>"; };
 		4BCB9DF317E4423783001186 /* libPods.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libPods.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		5C8E071317A6451EA3A64E07 /* Pods.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = Pods.xcconfig; path = Pods/Pods.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -80,6 +82,7 @@
 			files = (
 				086644C8187EAC87005988B0 /* CoreGraphics.framework in Frameworks */,
 				086644CA187EAC87005988B0 /* UIKit.framework in Frameworks */,
+				08CF0AB218924E4E00039172 /* Reveal.framework in Frameworks */,
 				086644C6187EAC87005988B0 /* Foundation.framework in Frameworks */,
 				DA272441BF794D4892D728E5 /* libPods.a in Frameworks */,
 			);
@@ -101,6 +104,7 @@
 		086644B9187EAC87005988B0 = {
 			isa = PBXGroup;
 			children = (
+				08CF0AB118924E4E00039172 /* Reveal.framework */,
 				086644CB187EAC87005988B0 /* CWTableViewController */,
 				086644EA187EAC87005988B0 /* CWTableViewControllerTests */,
 				086644C4187EAC87005988B0 /* Frameworks */,
@@ -467,9 +471,20 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_LAUNCHIMAGE_NAME = LaunchImage;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					/Users/ly/Dropbox/ColdWorks/CWTableViewController,
+				);
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "CWTableViewController/CWTableViewController-Prefix.pch";
 				INFOPLIST_FILE = "CWTableViewController/CWTableViewController-Info.plist";
+				OTHER_LDFLAGS = (
+					"-ObjC",
+					"-framework",
+					ImageIO,
+					"-framework",
+					Reveal,
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = app;
 			};
@@ -481,9 +496,20 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_LAUNCHIMAGE_NAME = LaunchImage;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					/Users/ly/Dropbox/ColdWorks/CWTableViewController,
+				);
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "CWTableViewController/CWTableViewController-Prefix.pch";
 				INFOPLIST_FILE = "CWTableViewController/CWTableViewController-Info.plist";
+				OTHER_LDFLAGS = (
+					"-ObjC",
+					"-framework",
+					ImageIO,
+					"-framework",
+					Reveal,
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = app;
 			};
